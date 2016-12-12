@@ -1,0 +1,118 @@
+#include <stdint.h>
+#include <stdio.h>
+
+#include "msp430G2231.h"
+
+#define TEST2 1
+
+#define SERVO_0 650
+#define SERVO_180 2350
+
+#define SERVO_COUNT 4
+
+#define SETSERVO(servo, pos) periods[servo].cycle = servopos(pos);
+
+typedef struct period_t_ {
+	uint16_t cycle;
+	uint8_t pins;
+} period_t;
+
+period_t periods[1 + SERVO_COUNT];
+uint8_t period = 0;
+
+void mysleep(uint16_t i);
+uint16_t servopos(uint8_t pos);
+void initperiod(uint8_t period, uint16_t cycle, uint8_t pins);
+
+int main(void)
+{
+	WDTCTL = WDTPW + WDTHOLD; /* Stop watchdog timer */
+	
+	initperiod(0, 20000, 0x00);
+	initperiod(1, servopos(90), BIT5);
+	initperiod(2, servopos(90), BIT4);
+	initperiod(3, servopos(90), BIT3);
+	initperiod(4, servopos(90), BIT2);
+
+	P1OUT = 0x00;
+	P1DIR |= BIT5;
+	P1DIR |= BIT4;
+	P1DIR |= BIT3;
+	P1DIR |= BIT2;
+
+	CCTL0 = CCIE;
+
+	CCR0 = 65535;
+
+	TACTL = MC_1 + TASSEL_2 + TACLR;
+
+	//_BIS_SR(LPM0_bits + GIE);
+	_BIS_SR(GIE);
+
+	while (1) {
+		uint16_t i;
+		
+		SETSERVO(1, 90);
+		SETSERVO(2, 90);
+		SETSERVO(3, 0);
+		mysleep(100);
+		for (i = 90; i != 25; i -= 5) {
+			SETSERVO(2, i);
+			mysleep(3);
+		}
+		SETSERVO(2, 25);
+		mysleep(100);
+		SETSERVO(3, 130);
+		for (i = 0; i < 15; i ++) {
+			SETSERVO(2, 15);
+			SETSERVO(3, 120);
+			mysleep(5);
+			SETSERVO(2, 25);
+			SETSERVO(3, 130);
+			mysleep(5);
+		}
+		mysleep(100);
+		SETSERVO(2, 10);
+		for (i = 0; i < 60; i += 5) {
+			SETSERVO(1, (90 - 30) + i);
+			mysleep(5);
+		}
+		for (i = 0; i < 60; i += 5) {
+			SETSERVO(1, (90 + 30) - i);
+			mysleep(5);
+		}
+		
+	}
+}
+
+#pragma vector = TIMERA0_VECTOR
+__interrupt void Timer_A_0(void)
+{
+	P1OUT = periods[period].pins;
+	CCR0 = periods[period].cycle;
+	if (period ++ >= SERVO_COUNT) period = 0;
+}
+
+void mysleep(uint16_t i)
+{
+	uint16_t y, x;
+	y = i;
+	while (--y != 0) {
+		for (x = 0; x < 2400; x ++);
+	}
+}
+
+uint16_t servopos(uint8_t pos)
+{
+        return (uint16_t) ((SERVO_180 - SERVO_0) * (float) pos / 180) + SERVO_0;
+}
+
+
+void initperiod(uint8_t period, uint16_t cycle, uint8_t pins)
+{
+	periods[period].cycle = cycle;
+	periods[period].pins = pins;
+	
+}
+
+/* vim: set sw=8 noet: */
